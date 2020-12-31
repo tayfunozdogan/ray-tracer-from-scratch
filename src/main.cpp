@@ -25,7 +25,7 @@ struct Light {
 
 class Sphere {
 public:
-	Sphere(const Vec3f &c, const float &r, const Vec3f &col, const Surface &s) 
+	Sphere(const Vec3f &c, const float &r, const Vec3f &col, const Surface &s)
 		: center(c), radius(r), color(col), surface(s) {}
 
 	std::optional<float> intersect(const Vec3f &orig, const Vec3f &dir) const
@@ -68,7 +68,7 @@ public:
 	Surface surface;
 };
 
-Vec3f reflect(const Vec3f &lightDir, const Vec3f &normal) 
+Vec3f reflect(const Vec3f &lightDir, const Vec3f &normal)
 {
 	return normal * 2.f * (normal.dotProduct(lightDir)) - lightDir;
 }
@@ -108,7 +108,7 @@ Vec3f castRay(const Vec3f &orig, Vec3f &dir, const std::vector<Sphere> &spheres,
 				hitSphere->surface.specularExponent) * light.intensity;
 		}
 
-		return hitSphere->color * diffuseLightInt * hitSphere->surface.albedo[0] + 
+		return hitSphere->color * diffuseLightInt * hitSphere->surface.albedo[0] +
 			Vec3f(1.f, 1.f, 1.f) * specularLightInt * hitSphere->surface.albedo[1];
 	}
 
@@ -117,8 +117,8 @@ Vec3f castRay(const Vec3f &orig, Vec3f &dir, const std::vector<Sphere> &spheres,
 
 void render(const std::vector<Sphere> &spheres, const std::vector<Light> &lights)
 {
-	const int width = 1024;
-	const int height = 768;
+	const int width = 2048;
+	const int height = 1536;
 	const float fov = 90;
 	const float imageAspectRatio = width / (float)height;
 	const float scale = tan(fov * 0.5f * (float)pi / 180);
@@ -136,7 +136,7 @@ void render(const std::vector<Sphere> &spheres, const std::vector<Light> &lights
 	}
 
 	std::ofstream ofs;
-	ofs.open("./out.ppm", std::ofstream::out | std::ofstream::binary);
+	ofs.open("../out.ppm", std::ofstream::out | std::ofstream::binary);
 	ofs << "P6\n" << width << " " << height << "\n255\n";
 
 	for (size_t i = 0; i < width * height; ++i) {
@@ -154,13 +154,13 @@ void render(const std::vector<Sphere> &spheres, const std::vector<Light> &lights
 	delete[] framebuffer;
 }
 
-int main() 
+int main()
 {
 	std::vector<Sphere> spheres;
 
 	Vec3f ivory(0.4f, 0.4f, 0.3f);
 	Vec3f pinkRubber(0.30f, 0.20f, 0.28f);
-	
+
 	spheres.push_back(Sphere(Vec3f(-3,   0,   -16), 2, ivory, Surface(Vec2f(0.6f, 0.3f), 50.f)));
 	spheres.push_back(Sphere(Vec3f(-1., -1.5, -12), 2, pinkRubber, Surface(Vec2f(0.9f, 0.1f), 10.f)));
 	spheres.push_back(Sphere(Vec3f(1.5, -0.5, -18), 3, pinkRubber, Surface(Vec2f(0.9f, 0.1f), 10.f)));
