@@ -23,11 +23,21 @@ struct Light {
     float m_intensity;
 };
 
+class Ray {
+public:
+    Ray(const Vec3f &orig, const Vec3f &dir) : m_origin(orig), m_direction(dir) {}
+    Vec3f orig() const { return m_origin; }
+    Vec3f dir() const { return m_direction; }
+
+private:
+    Vec3f m_origin, m_direction;
+};
+
 class Object {
 public:
     explicit Object(const Vec3f &color, const Surface &surface) : m_color(color / 255.f), m_surface(surface) {}
-    virtual std::optional<float> intersect(const Vec3f &, const Vec3f &) const = 0;
-    virtual Vec3f normalAt(const Vec3f &, const Vec3f &, const float &) const = 0;
+    virtual std::optional<float> intersect(const Ray &) const = 0;
+    virtual Vec3f normalAt(const Ray &, const float &) const = 0;
 
     Vec3f m_color;
     Surface m_surface;
@@ -38,13 +48,13 @@ public:
     Sphere(const Vec3f &center, const float &radius, const Vec3f &color, const Surface &surface)
             : m_center(center), m_radius(radius), Object(color, surface) {}
 
-    std::optional<float> intersect(const Vec3f &orig, const Vec3f &dir) const override
+    std::optional<float> intersect(const Ray &ray) const override
     {
         float t0, t1;
         std::optional<float> t;
-        Vec3f L = orig - m_center;
-        float a = dir.dotProduct(dir);
-        float b = 2 * L.dotProduct(dir);
+        Vec3f L = ray.orig() - m_center;
+        float a = ray.dir().dotProduct(ray.dir());
+        float b = 2 * L.dotProduct(ray.dir());
         float c = L.dotProduct(L) - m_radius * m_radius;
 
         float disc = b * b - 4 * a * c;
@@ -73,9 +83,9 @@ public:
         return t;
     }
 
-    Vec3f normalAt(const Vec3f &orig, const Vec3f &dir, const float &t) const override
+    Vec3f normalAt(const Ray &ray, const float &t) const override
     {
-        Vec3f pointHit = orig + t * dir;
+        Vec3f pointHit = ray.orig() + t * ray.dir();
         return (pointHit - m_center).normalize();
     }
 
@@ -91,12 +101,12 @@ public:
         m_normal = Vec3f(normal).normalize();
     }
 
-    std::optional<float> intersect(const Vec3f &orig, const Vec3f &dir) const override
+    std::optional<float> intersect(const Ray &ray) const override
     {
         std::optional<float> t;
-        float denom = dir.dotProduct(m_normal);
+        float denom = ray.dir().dotProduct(m_normal);
         if (std::abs(denom) > 1e-6) {
-            float tTemp = (m_point - orig).dotProduct(m_normal) / denom;
+            float tTemp = (m_point - ray.orig()).dotProduct(m_normal) / denom;
             if (tTemp >= 0.01 && tTemp <= 1000) {
                 t = tTemp;
             }
@@ -105,9 +115,9 @@ public:
         return t;
     }
 
-    Vec3f normalAt(const Vec3f &orig, const Vec3f &dir, const float &t) const override
+    Vec3f normalAt(const Ray &ray, const float &) const override
     {
-        float denom = dir.dotProduct(m_normal);
+        float denom = ray.dir().dotProduct(m_normal);
         return m_normal * (denom > 0 ? -1.f : 1.f);
     }
 
@@ -119,10 +129,10 @@ Vec3f reflect(const Vec3f &lightDir, const Vec3f &normal)
     return normal * 2.f * (normal.dotProduct(lightDir)) - lightDir;
 }
 
-bool trace(const Vec3f &orig, const Vec3f &dir, const std::vector<std::unique_ptr<Object>> &objects, float &tNear, const Object *&hitObject)
+bool trace(const Ray &ray, const std::vector<std::unique_ptr<Object>> &objects, float &tNear, const Object *&hitObject)
 {
     for (const auto & object : objects) {
-        auto t = object->intersect(orig, dir);
+        auto t = object->intersect(ray);
         if (t.has_value() && tNear > t.value()) {
             hitObject = object.get();
             tNear = t.value();
@@ -132,14 +142,14 @@ bool trace(const Vec3f &orig, const Vec3f &dir, const std::vector<std::unique_pt
     return (hitObject != nullptr);
 }
 
-Vec3f castRay(const Vec3f &orig, Vec3f &dir, const std::vector<std::unique_ptr<Object>> &objects, const std::vector<Light> &lights)
+Vec3f castRay(const Ray &ray, const std::vector<std::unique_ptr<Object>> &objects, const std::vector<Light> &lights)
 {
     float t = std::numeric_limits<float>::max();
     const Object *hitObject = nullptr;
 
-    if (trace(orig, dir, objects, t, hitObject)) {
-        Vec3f pointHit = orig + t * dir;
-        Vec3f normalRay = hitObject->normalAt(orig, dir, t);
+    if (trace(ray, objects, t, hitObject)) {
+        Vec3f pointHit = ray.orig() + t * ray.dir();
+        Vec3f normalRay = hitObject->normalAt(ray, t);
         float diffuseLightInt = 0, specularLightInt = 0;
 
         for (auto &light : lights) {
@@ -148,9 +158,10 @@ Vec3f castRay(const Vec3f &orig, Vec3f &dir, const std::vector<std::unique_ptr<O
             const Object *shadowHitObject = nullptr;
             float tShadow = std::numeric_limits<float>::max();
 
-            bool vis = !trace(shadowOrig, lightDir, objects, tShadow, shadowHitObject);
+            const Ray shadowRay(shadowOrig, lightDir);
+            bool vis = !trace(shadowRay, objects, tShadow, shadowHitObject);
             diffuseLightInt += vis * light.m_intensity * std::max(0.f, normalRay.dotProduct(lightDir));
-            specularLightInt += vis * std::powf(std::max(0.f, reflect(lightDir, normalRay).dotProduct(-dir)),
+            specularLightInt += vis * std::powf(std::max(0.f, reflect(lightDir, normalRay).dotProduct(-ray.dir())),
                                                 hitObject->m_surface.m_specularExponent) * light.m_intensity;
         }
 
@@ -177,7 +188,7 @@ void render(const std::vector<std::unique_ptr<Object>> &objects, const std::vect
             float x = (2 * (k + 0.5f) / width - 1) * imageAspectRatio * scale;
             float y = (1 - (2 * (i + 0.5f) / height)) * scale;
             Vec3f dir = Vec3f(x, y, -1).normalize();
-            *(pix++) = castRay(Vec3f(0, 0, 0), dir, objects, lights);
+            *(pix++) = castRay(Ray(Vec3f(), dir), objects, lights);
         }
     }
 
@@ -212,13 +223,13 @@ int main()
     Vec3f chocolate (210.f, 105.f,  30.f);
     Vec3f turquoise (72.f,  209.f,  204.f);
     Vec3f crimson   (220.f,  20.f,  60.f);
-    Vec3f gold      (255.f, 215.f,  0);
+    Vec3f gold      (255.f, 215.f,  0.f);
     Vec3f violet    (138.f,  43.f,  226.f);
 
     objects.push_back(std::unique_ptr<Object>(
             new Plane(Vec3f(0, 0, 1), Vec3f(0, 0, -30), ivory, Surface(Vec2f(0.6f, 0.3f), 50.f))));
     objects.push_back(std::unique_ptr<Object>(
-            new Plane(Vec3f(-2.5, 0, 3), Vec3f(12.f, 0, -30), pinkRubber, Surface(Vec2f(0.6f, 0.3f), 50.f))));
+            new Plane(Vec3f(-2.5, 0, 3), Vec3f(36.f, 0, -10), pinkRubber, Surface(Vec2f(0.6f, 0.3f), 50.f))));
     objects.push_back(std::unique_ptr<Object>(
             new Plane(Vec3f(-2.5, 0, -3), Vec3f(-12.f, 0, -30), blue, Surface(Vec2f(0.6f, 0.3f), 50.f))));
     objects.push_back(std::unique_ptr<Object>(
