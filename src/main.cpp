@@ -5,6 +5,7 @@
 #include <optional>
 #include <limits>
 #include <algorithm>
+#include <random>
 
 #include "geometry.h"
 #include "Surface.h"
@@ -15,6 +16,10 @@
 #include "Plane.h"
 
 inline constexpr float bias = 0.001f;
+std::random_device randomDevice;
+std::mt19937 gen(randomDevice());
+std::uniform_real_distribution<float> dis(-0.5f, 0.5f);
+std::uniform_real_distribution<> disRGB(0, 255);
 
 inline Vec3f reflect(const Vec3f &lightDir, const Vec3f &normal)
 {
@@ -42,6 +47,7 @@ struct Color {
     static Vec3f crimson() { return Vec3f(220,  20,  60); }
     static Vec3f gold() { return Vec3f(255, 215,  0); }
     static Vec3f violet() { return Vec3f(138,  43,  226); }
+    static Vec3f randomColor() { return Vec3f(disRGB(gen), disRGB(gen), disRGB(gen)); }
 };
 
 bool trace(const Ray &ray, const std::vector<std::unique_ptr<Object>> &objects, float &tNear, const Object *&hitObject)
@@ -129,6 +135,16 @@ int main()
 
     std::vector<std::unique_ptr<Object>> objects;
 
+    gen.seed(start.time_since_epoch().count());
+
+    int numSpheres = 8;
+
+    for (int i = 0; i < numSpheres; ++i) {
+        Vec3f randPos{dis(gen) * 15, dis(gen) * 15, ((dis(gen) + 0.5f) * -15) - 10 };
+        float randRadius = dis(gen) + 1.2f;
+        objects.push_back(std::unique_ptr<Object>(
+                new Sphere(randPos, randRadius, Color::randomColor(), Surface(Vec2f(0.4, 0.6), 50))));
+    }
     objects.push_back(std::unique_ptr<Object>(
             new Plane(Vec3f(0, 0, 1), Vec3f(0, 0, -30), Color::ivory(), Surface(Vec2f(0.6, 0.3), 50))));
     objects.push_back(std::unique_ptr<Object>(
@@ -139,21 +155,14 @@ int main()
             new Plane(Vec3f(0, -5, 6), Vec3f(0, 12, -30), Color::lime(), Surface(Vec2f(0.6, 0.3), 50))));
     objects.push_back(std::unique_ptr<Object>(
             new Plane(Vec3f(0, -5, -6), Vec3f(0, -12, -30), Color::purple(), Surface(Vec2f(0.6, 0.3), 50))));
-    objects.push_back(std::unique_ptr<Object>(
-            new Sphere(Vec3f(-2,   -2, -8), 1, Color::crimson(), Surface(Vec2f(0.2, 0.3), 50))));
-    objects.push_back(std::unique_ptr<Object>(
-            new Sphere(Vec3f(-5,   3, -12), 2, Color::chocolate(), Surface(Vec2f(0.6, 0.3), 50.))));
-    objects.push_back(std::unique_ptr<Object>(
-            new Sphere(Vec3f(4, -3, -18), 3, Color::gold(), Surface(Vec2f(0.3, 0.3), 50))));
-
 
     std::vector<PointLight> lights;
-    lights.push_back(PointLight(Vec3f(10, 10, 50), 1.f));
-    lights.push_back(PointLight(Vec3f(-7, 5, 40), 1.f));
+    lights.push_back(PointLight(Vec3f(20, 20, 20), 1.f));
+    lights.push_back(PointLight(Vec3f(-7, -7, 10), 1.f));
     lights.push_back(PointLight(Vec3f(-14, 14, 30), 1.f));
 
-    Options::width = 1024;
-    Options::height = 1024;
+    Options::width = 2048;
+    Options::height = 2048;
     Options::fov = 90;
 
     render(objects, lights);
